@@ -1,15 +1,20 @@
 package com.yourname.nib.features.me
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -505,7 +510,15 @@ private fun ManageRow(
             fontFamily = nibFontFamily(),
         )
         IconButton(onClick = { confirm = true }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.Delete, contentDescription = null, tint = tokenColor(t.text3), modifier = Modifier.size(15.dp))
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(tokenColor(t.danger).copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "删除", tint = tokenColor(t.danger), modifier = Modifier.size(14.dp))
+            }
         }
     }
     if (confirm) {
@@ -514,7 +527,9 @@ private fun ManageRow(
             title = { Text("删除「$name」") },
             text = { Text("条目本身不会被删除，只会解除归属。") },
             confirmButton = {
-                TextButton(onClick = { onDelete(); confirm = false }) { Text("删除") }
+                TextButton(onClick = { onDelete(); confirm = false }) {
+                    Text("删除", color = tokenColor(t.danger))
+                }
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } },
         )
@@ -619,6 +634,7 @@ private fun ActionRow(icon: ImageVector, label: String, value: String, onClick: 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
     val theme by vm.theme.collectAsStateWithLifecycle()
@@ -838,10 +854,13 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { openUrl(context, PROJECT_URL) }
+                            .combinedClickable(
+                                onClick = { openUrl(context, PROJECT_URL) },
+                                onLongClick = { copyText(context, "项目地址", PROJECT_URL) },
+                            )
                             .padding(horizontal = 14.dp, vertical = 11.dp),
                     ) {
-                        Text("项目地址", color = tokenColor(t.text3), fontSize = 10.5.sp, fontFamily = nibFontFamily())
+                        Text("项目地址 · 长按复制", color = tokenColor(t.text3), fontSize = 10.5.sp, fontFamily = nibFontFamily())
                         Text(
                             text = PROJECT_URL.removePrefix("https://"),
                             color = tokenColor(t.accent),
@@ -974,4 +993,10 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
 
 private fun openUrl(context: Context, url: String) {
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+}
+
+private fun copyText(context: Context, label: String, text: String) {
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    Toast.makeText(context, "已复制$label", Toast.LENGTH_SHORT).show()
 }
