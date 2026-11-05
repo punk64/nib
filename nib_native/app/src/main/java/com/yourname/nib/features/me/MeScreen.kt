@@ -8,7 +8,12 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -21,6 +26,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,14 +76,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yourname.nib.BuildConfig
 import com.yourname.nib.NibViewModel
+import com.yourname.nib.core.update.ApkInstall
+import com.yourname.nib.core.update.DownloadPhase
 import com.yourname.nib.core.update.PROJECT_URL
+import com.yourname.nib.core.update.UpdateCenter
 import com.yourname.nib.core.update.UpdateChecker
 import com.yourname.nib.core.update.UpdateInfo
+import com.yourname.nib.core.update.formatSize
 import com.yourname.nib.core.update.isNewerVersion
 import com.yourname.nib.core.CrashCatcher
 import com.yourname.nib.core.model.splitByDone
@@ -97,6 +108,7 @@ import com.yourname.nib.widgets.NibHero
 import com.yourname.nib.widgets.NibIconBadge
 import com.yourname.nib.widgets.NibRowDivider
 import com.yourname.nib.widgets.SectionTitle
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -634,6 +646,87 @@ private fun ActionRow(icon: ImageVector, label: String, value: String, onClick: 
     }
 }
 
+@Composable
+private fun SpinningRefresh(spinning: Boolean, tint: Color, size: Dp) {
+    if (!spinning) {
+        Icon(Icons.Default.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(size))
+        return
+    }
+    val transition = rememberInfiniteTransition(label = "updateSpin")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
+        label = "updateAngle",
+    )
+    Icon(
+        Icons.Default.Refresh,
+        contentDescription = null,
+        tint = tint,
+        modifier = Modifier
+            .size(size)
+            .rotate(angle),
+    )
+}
+
+@Composable
+private fun UpdateRow(hint: String, spinning: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val t = LocalNibTokens.current
+    val accent = tokenColor(t.accent)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(27.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(accent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            SpinningRefresh(spinning, accent, 15.dp)
+        }
+        Spacer(Modifier.width(11.dp))
+        Text(
+            text = "检查更新",
+            color = tokenColor(t.text),
+            fontSize = 13.5.sp,
+            fontFamily = nibFontFamily(),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = hint,
+            color = if (spinning) accent else tokenColor(t.text3),
+            fontSize = 11.5.sp,
+            fontFamily = nibFontFamily(),
+        )
+    }
+}
+
+@Composable
+private fun DownloadBar(fraction: Float) {
+    val t = LocalNibTokens.current
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(shape)
+            .background(tokenColor(t.line2)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .clip(shape)
+                .background(tokenColor(t.accent)),
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
@@ -654,6 +747,8 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
     var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     var updateHint by remember { mutableStateOf("检查") }
     var checkingUpdate by remember { mutableStateOf(false) }
+    var installReady by remember { mutableStateOf<File?>(null) }
+    val download by UpdateCenter.download.collectAsStateWithLifecycle()
     var openGroups by rememberSaveable { mutableStateOf("") }
     val openKeys = openGroups.split(',').filter { it.isNotEmpty() }.toSet()
 
@@ -696,6 +791,42 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
 
     LaunchedEffect(Unit) {
         crashText = withContext(Dispatchers.IO) { CrashCatcher.latest(context) }
+    }
+
+    val installGate = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val file = installReady ?: return@rememberLauncherForActivityResult
+        if (!ApkInstall.canInstall(context)) {
+            vm.setNotice("尚未允许安装未知应用")
+            return@rememberLauncherForActivityResult
+        }
+        if (ApkInstall.install(context, file)) {
+            installReady = null
+            UpdateCenter.reset()
+        } else {
+            vm.setNotice("无法启动安装器")
+        }
+    }
+
+    LaunchedEffect(download.phase) {
+        if (download.phase != DownloadPhase.Done) return@LaunchedEffect
+        val file = download.file ?: return@LaunchedEffect
+        if (ApkInstall.canInstall(context)) {
+            if (ApkInstall.install(context, file)) UpdateCenter.reset() else vm.setNotice("无法启动安装器")
+            return@LaunchedEffect
+        }
+        installReady = file
+        val intent = ApkInstall.permissionIntent(context)
+        if (intent == null) {
+            if (ApkInstall.install(context, file)) {
+                installReady = null
+                UpdateCenter.reset()
+            }
+        } else {
+            runCatching { installGate.launch(intent) }.onFailure {
+                installReady = null
+                vm.setNotice("请在系统设置中允许安装未知应用")
+            }
+        }
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -870,25 +1001,40 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
                         )
                     }
                     NibRowDivider()
-                    ActionRow(Icons.Default.Refresh, "检查更新", updateHint) {
-                        if (checkingUpdate) return@ActionRow
-                        checkingUpdate = true
-                        updateHint = "检查中"
-                        scope.launch {
-                            val result = UpdateChecker.latest()
-                            checkingUpdate = false
-                            result.onSuccess { info ->
-                                if (isNewerVersion(info.version, BuildConfig.VERSION_NAME)) {
-                                    updateHint = "发现 v${info.version}"
-                                    updateInfo = info
-                                } else {
-                                    updateHint = "已是最新"
+                    UpdateRow(
+                        hint = when {
+                            checkingUpdate -> "检查中"
+                            download.phase == DownloadPhase.Running -> "${(download.fraction * 100).roundToInt()}%"
+                            download.phase == DownloadPhase.Done -> "待安装"
+                            download.phase == DownloadPhase.Failed -> "下载失败"
+                            else -> updateHint
+                        },
+                        spinning = checkingUpdate || download.phase == DownloadPhase.Running,
+                        enabled = !checkingUpdate && download.phase != DownloadPhase.Running,
+                        onClick = {
+                            if (!checkingUpdate && download.phase != DownloadPhase.Running) {
+                                if (download.phase == DownloadPhase.Done || download.phase == DownloadPhase.Failed) {
+                                    UpdateCenter.reset()
                                 }
-                            }.onFailure {
-                                updateHint = "检查失败"
+                                checkingUpdate = true
+                                updateHint = "检查中"
+                                scope.launch {
+                                    val result = UpdateChecker.latest()
+                                    checkingUpdate = false
+                                    result.onSuccess { info ->
+                                        if (isNewerVersion(info.version, BuildConfig.VERSION_NAME)) {
+                                            updateHint = "发现 v${info.version}"
+                                            updateInfo = info
+                                        } else {
+                                            updateHint = "已是最新"
+                                        }
+                                    }.onFailure {
+                                        updateHint = "检查失败"
+                                    }
+                                }
                             }
-                        }
-                    }
+                        },
+                    )
                 }
             }
         }
@@ -977,15 +1123,104 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    openUrl(context, pending.downloadUrl ?: pending.pageUrl)
-                    updateInfo = null
-                }) {
-                    Text(if (pending.downloadUrl != null) "下载" else "查看页面")
+                TextButton(
+                    enabled = pending.downloadUrl != null,
+                    onClick = {
+                        val url = pending.downloadUrl
+                        if (url != null) {
+                            updateInfo = null
+                            UpdateCenter.start(context, pending.version, url)
+                        }
+                    },
+                ) {
+                    Text(
+                        text = if (pending.downloadUrl != null) "下载并安装" else "暂无安装包",
+                        color = if (pending.downloadUrl != null) tokenColor(t.accent) else tokenColor(t.text3),
+                        fontFamily = nibFontFamily(),
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { updateInfo = null }) { Text("稍后") }
+                TextButton(onClick = { updateInfo = null }) {
+                    Text("稍后", color = tokenColor(t.text2), fontFamily = nibFontFamily())
+                }
+            },
+        )
+    }
+
+    if (download.phase == DownloadPhase.Running) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(
+                    text = if (download.version.isBlank()) "正在下载安装包" else "正在下载 v${download.version}",
+                    fontFamily = nibFontFamily(),
+                )
+            },
+            text = {
+                Column {
+                    DownloadBar(download.fraction)
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${(download.fraction * 100).roundToInt()}%",
+                            color = tokenColor(t.accent),
+                            fontSize = 12.sp,
+                            fontFamily = nibFontFamily(),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = if (download.total > 0) {
+                                "${formatSize(download.received)} / ${formatSize(download.total)}"
+                            } else {
+                                formatSize(download.received)
+                            },
+                            color = tokenColor(t.text3),
+                            fontSize = 11.sp,
+                            fontFamily = nibFontFamily(),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "下载完成后自动打开系统安装器",
+                        color = tokenColor(t.text3),
+                        fontSize = 11.sp,
+                        fontFamily = nibFontFamily(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { UpdateCenter.cancel() }) {
+                    Text("取消", color = tokenColor(t.text2), fontSize = 12.sp, fontFamily = nibFontFamily())
+                }
+            },
+            dismissButton = {},
+        )
+    }
+
+    if (download.phase == DownloadPhase.Failed) {
+        AlertDialog(
+            onDismissRequest = { UpdateCenter.reset() },
+            title = { Text("下载失败", fontFamily = nibFontFamily()) },
+            text = {
+                Text(
+                    text = download.message.orEmpty(),
+                    fontSize = 12.5.sp,
+                    fontFamily = nibFontFamily(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = download.url.isNotBlank(),
+                    onClick = { UpdateCenter.start(context, download.version, download.url) },
+                ) {
+                    Text("重试", color = tokenColor(t.accent), fontFamily = nibFontFamily())
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { UpdateCenter.reset() }) {
+                    Text("关闭", color = tokenColor(t.text2), fontFamily = nibFontFamily())
+                }
             },
         )
     }
