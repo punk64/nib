@@ -26,6 +26,15 @@ nib/pubspec.lock
 # 构建产物
 产物/*.apk
 
+# 签名材料
+keystore.properties
+nib_native/keystore.properties
+keystore/
+nib_native/keystore/
+*.jks
+*.keystore
+product_tools/
+
 # 项目内部记录
 .workbuddy/
 .tmp/
