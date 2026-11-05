@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="capture"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_capture"
+        android:shortcutLongLabel="@string/shortcut_capture"
+        android:icon="@drawable/ic_nib_notification">
+        <intent
+            android:action="com.yourname.nib.action.QUICK_CAPTURE"
+            android:targetPackage="com.yourname.nib"
+            android:targetClass="com.yourname.nib.core.capture.QuickCaptureActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_search"
+        android:shortcutLongLabel="@string/shortcut_search"
+        android:icon="@drawable/ic_nib_notification">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.yourname.nib"
+            android:targetClass="com.yourname.nib.MainActivity">
+            <extra android:name="nib_tab" android:value="all" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="today"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_today"
+        android:shortcutLongLabel="@string/shortcut_today"
+        android:icon="@drawable/ic_nib_notification">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.yourname.nib"
+            android:targetClass="com.yourname.nib.MainActivity">
+            <extra android:name="nib_tab" android:value="today" />
+        </intent>
+    </shortcut>
+</shortcuts>

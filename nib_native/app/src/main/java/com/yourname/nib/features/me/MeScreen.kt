@@ -1,0 +1,923 @@
+package com.yourname.nib.features.me
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.yourname.nib.BuildConfig
+import com.yourname.nib.NibViewModel
+import com.yourname.nib.core.update.PROJECT_URL
+import com.yourname.nib.core.update.UpdateChecker
+import com.yourname.nib.core.update.UpdateInfo
+import com.yourname.nib.core.update.isNewerVersion
+import com.yourname.nib.core.CrashCatcher
+import com.yourname.nib.core.model.splitByDone
+import com.yourname.nib.core.theme.LocalNibTokens
+import com.yourname.nib.core.theme.NibTokens
+import com.yourname.nib.core.theme.ThemeConfig
+import com.yourname.nib.core.theme.TuneField
+import com.yourname.nib.core.theme.nibFontFamily
+import com.yourname.nib.core.theme.palettes
+import com.yourname.nib.core.theme.themeStyles
+import com.yourname.nib.core.theme.tokenColor
+import com.yourname.nib.core.theme.tuneFields
+import com.yourname.nib.core.theme.withAlpha
+import com.yourname.nib.core.time.NibDate
+import com.yourname.nib.widgets.NibCard
+import com.yourname.nib.widgets.NibHero
+import com.yourname.nib.widgets.NibIconBadge
+import com.yourname.nib.widgets.NibRowDivider
+import com.yourname.nib.widgets.SectionTitle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+@Composable
+private fun Padded(content: @Composable () -> Unit) {
+    Box(Modifier.padding(horizontal = 18.dp)) { content() }
+}
+
+private fun hexColor(hex: String, fallback: Color): Color {
+    val s = hex.trim().removePrefix("#")
+    if (s.length < 6) return fallback
+    val v = s.take(6).toLongOrNull(16) ?: return fallback
+    return Color((0xFF000000L or v).toInt())
+}
+
+@Composable
+private fun StatCard(value: String, label: String) {
+    val t = LocalNibTokens.current
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(t.radiusCard.dp))
+            .background(tokenColor(t.card))
+            .border(0.6.dp, tokenColor(t.line), RoundedCornerShape(t.radiusCard.dp))
+            .padding(horizontal = 13.dp, vertical = 14.dp),
+    ) {
+        Text(
+            text = value,
+            color = tokenColor(t.text),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.8).sp,
+            fontFamily = nibFontFamily(),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            color = tokenColor(t.text3),
+            fontSize = 10.5.sp,
+            fontFamily = nibFontFamily(),
+        )
+    }
+}
+
+@Composable
+private fun StatRow(undone: Int, doneWeek: Int, total: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        StatCard(undone.toString(), "待办")
+        StatCard(doneWeek.toString(), "本周完成")
+        StatCard(total.toString(), "条目总数")
+    }
+}
+
+@Composable
+private fun PanelLine(label: String, onClick: () -> Unit, trailing: @Composable () -> Unit) {
+    val t = LocalNibTokens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = tokenColor(t.text),
+            fontSize = 13.sp,
+            fontFamily = nibFontFamily(),
+            modifier = Modifier.weight(1f),
+        )
+        trailing()
+    }
+}
+
+@Composable
+private fun StyleThumb(styleId: String, size: Int = 22) {
+    val style = themeStyles.first { it.id == styleId }
+    Box(
+        modifier = Modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(tokenColor(style.thumbA), tokenColor(style.thumbB))))
+            .border(0.8.dp, tokenColor(withAlpha(0xFFFFFFFFL, 46)), CircleShape),
+    )
+}
+
+@Composable
+private fun StylePill(styleId: String, name: String, active: Boolean, onClick: () -> Unit) {
+    val t = LocalNibTokens.current
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(if (active) tokenColor(t.accentWeak) else tokenColor(t.card))
+            .border(if (active) 1.5.dp else 0.8.dp, if (active) tokenColor(t.accent) else tokenColor(t.line), shape)
+            .clickable(onClick = onClick)
+            .padding(start = 5.dp, end = 9.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StyleThumb(styleId)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = name,
+            color = if (active) tokenColor(t.text) else tokenColor(t.text2),
+            fontSize = 11.sp,
+            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+            fontFamily = nibFontFamily(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ColorChip(accent: Long, bg: Long, active: Boolean, onClick: () -> Unit) {
+    val t = LocalNibTokens.current
+    val shape = RoundedCornerShape(7.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(27.dp)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(tokenColor(accent), tokenColor(bg))))
+            .border(
+                width = if (active) 2.dp else 0.8.dp,
+                color = when {
+                    active -> tokenColor(t.text)
+                    t.dark -> tokenColor(withAlpha(0xFFFFFFFFL, 56))
+                    else -> tokenColor(withAlpha(0xFF000000L, 40))
+                },
+                shape = shape,
+            )
+            .clickable(onClick = onClick),
+    )
+}
+
+@Composable
+private fun BaseSegment(dark: Boolean, onDark: (Boolean) -> Unit) {
+    val t = LocalNibTokens.current
+    val shape = RoundedCornerShape(t.radiusM.dp)
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(tokenColor(t.card2))
+            .padding(2.dp),
+    ) {
+        listOf(true to "深色", false to "浅色").forEach { (value, label) ->
+            val on = dark == value
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape((t.radiusM - 2).coerceAtLeast(1).dp))
+                    .background(if (on) tokenColor(t.accentWeak) else Color.Transparent)
+                    .clickable { onDark(value) }
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = label,
+                    color = if (on) tokenColor(t.accent) else tokenColor(t.text3),
+                    fontSize = 11.sp,
+                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                    fontFamily = nibFontFamily(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TuneSlider(field: TuneField, value: Int, onChange: (Int) -> Unit) {
+    val t = LocalNibTokens.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = field.label,
+                color = tokenColor(t.text2),
+                fontSize = 11.5.sp,
+                fontFamily = nibFontFamily(),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "$value${field.suffix}",
+                color = tokenColor(t.accent),
+                fontSize = 11.sp,
+                fontFamily = nibFontFamily(),
+            )
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onChange(it.roundToInt()) },
+            valueRange = field.min.toFloat()..field.max.toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = tokenColor(t.accent),
+                activeTrackColor = tokenColor(t.accent),
+                inactiveTrackColor = tokenColor(t.line2),
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun ThemePanel(vm: NibViewModel, config: ThemeConfig, t: NibTokens) {
+    var fold by remember { mutableStateOf<String?>(null) }
+    var more by remember { mutableStateOf(false) }
+    val dirty by vm.themeDirty.collectAsStateWithLifecycle()
+    val style = themeStyles.firstOrNull { it.id == t.styleId } ?: themeStyles[0]
+    val palette = palettes.firstOrNull { it.key == t.colorKey } ?: palettes[0]
+    NibCard {
+        PanelLine("主题风格", { fold = if (fold == "style") null else "style" }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StyleThumb(style.id, 18)
+                Spacer(Modifier.width(7.dp))
+                Text(style.name, color = tokenColor(t.text2), fontSize = 12.sp, fontFamily = nibFontFamily())
+                Text("  ▾", color = tokenColor(t.text3), fontSize = 10.sp)
+            }
+        }
+        if (fold == "style") {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                themeStyles.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        row.forEach { item ->
+                            Box(Modifier.weight(1f)) {
+                                StylePill(item.id, item.name, item.id == t.styleId) { vm.setStyle(item.id) }
+                            }
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+            NibRowDivider()
+        }
+        PanelLine("主题颜色", { fold = if (fold == "color") null else "color" }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(tokenColor(palette.accent), tokenColor(palette.bg)))),
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(palette.name, color = tokenColor(t.text2), fontSize = 12.sp, fontFamily = nibFontFamily())
+                Text("  ▾", color = tokenColor(t.text3), fontSize = 10.sp)
+            }
+        }
+        if (fold == "color") {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(palettes.take(6), palettes.drop(6)).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        row.forEach { item ->
+                            Box(Modifier.weight(1f)) {
+                                ColorChip(item.accent, item.bg, item.key == t.colorKey) { vm.setColor(item.key) }
+                            }
+                        }
+                    }
+                }
+            }
+            NibRowDivider()
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BaseSegment(t.dark) { vm.setDark(it) }
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .clickable { more = !more }
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (more) "收起调节" else "更多调节",
+                    color = tokenColor(t.accent),
+                    fontSize = 11.sp,
+                    fontFamily = nibFontFamily(),
+                )
+                Text(
+                    text = if (more) "  ↑" else "  →",
+                    color = tokenColor(t.accent),
+                    fontSize = 11.sp,
+                )
+            }
+        }
+        if (more) {
+            NibRowDivider()
+            Column(modifier = Modifier.padding(top = 9.dp, bottom = 2.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "风格微调",
+                        color = tokenColor(t.text),
+                        fontSize = 11.5.sp,
+                        fontFamily = nibFontFamily(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "${style.name} 专属参数",
+                        color = tokenColor(t.text3),
+                        fontSize = 10.sp,
+                        fontFamily = nibFontFamily(),
+                    )
+                }
+                tuneFields(t.styleId).forEach { field ->
+                    TuneSlider(field, config.tuneValue(field.key)) { vm.setTune(field.key, it) }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "恢复本风格默认",
+                        color = tokenColor(t.text3),
+                        fontSize = 10.5.sp,
+                        fontFamily = nibFontFamily(),
+                        modifier = Modifier
+                            .clickable { vm.resetTune() }
+                            .padding(vertical = 2.dp),
+                    )
+                }
+            }
+        }
+        if (dirty) {
+            NibRowDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "有未保存的更改",
+                    color = tokenColor(t.accent),
+                    fontSize = 11.sp,
+                    fontFamily = nibFontFamily(),
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { vm.revertTheme() },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Text("放弃", color = tokenColor(t.text2), fontSize = 11.sp, fontFamily = nibFontFamily())
+                }
+                TextButton(
+                    onClick = { vm.commitTheme(); vm.setNotice("主题已保存") },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                ) {
+                    Text("保存主题", color = tokenColor(t.accent), fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = nibFontFamily())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManageRow(
+    name: String,
+    count: Int,
+    icon: ImageVector,
+    color: Color,
+    onDelete: () -> Unit,
+) {
+    val t = LocalNibTokens.current
+    var confirm by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp, end = 6.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NibIconBadge(icon, color)
+        Spacer(Modifier.width(11.dp))
+        Text(
+            text = name,
+            color = tokenColor(t.text),
+            fontSize = 14.sp,
+            fontFamily = nibFontFamily(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = count.toString(),
+            color = tokenColor(t.text3),
+            fontSize = 11.5.sp,
+            fontFamily = nibFontFamily(),
+        )
+        IconButton(onClick = { confirm = true }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = tokenColor(t.text3), modifier = Modifier.size(15.dp))
+        }
+    }
+    if (confirm) {
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("删除「$name」") },
+            text = { Text("条目本身不会被删除，只会解除归属。") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(); confirm = false }) { Text("删除") }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } },
+        )
+    }
+}
+
+@Composable
+private fun AddRow(text: String, sub: String, onClick: () -> Unit) {
+    val t = LocalNibTokens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(27.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .border(0.8.dp, tokenColor(t.line2), RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", color = tokenColor(t.accent), fontSize = 15.sp, fontFamily = nibFontFamily())
+        }
+        Spacer(Modifier.width(11.dp))
+        Text(text, color = tokenColor(t.accent), fontSize = 13.sp, fontFamily = nibFontFamily(), modifier = Modifier.weight(1f))
+        Text(sub, color = tokenColor(t.text3), fontSize = 10.5.sp, fontFamily = nibFontFamily())
+    }
+}
+
+private fun toggleGroup(current: String, key: String): String {
+    val keys = current.split(',').filter { it.isNotEmpty() }
+    return (if (key in keys) keys - key else keys + key).joinToString(",")
+}
+
+private fun groupHint(openKeys: Set<String>, key: String): String = if (key in openKeys) "收起" else "展开"
+
+@Composable
+private fun ActionRow(icon: ImageVector, label: String, value: String, onClick: () -> Unit) {
+    val t = LocalNibTokens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NibIconBadge(icon, tokenColor(t.accent))
+        Spacer(Modifier.width(11.dp))
+        Text(label, color = tokenColor(t.text), fontSize = 13.5.sp, fontFamily = nibFontFamily(), modifier = Modifier.weight(1f))
+        Text(value, color = tokenColor(t.text3), fontSize = 11.5.sp, fontFamily = nibFontFamily())
+    }
+}
+
+@Composable
+fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
+    val theme by vm.theme.collectAsStateWithLifecycle()
+    val lists by vm.lists.collectAsStateWithLifecycle()
+    val tags by vm.tags.collectAsStateWithLifecycle()
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val conflicts by vm.conflicts.collectAsStateWithLifecycle()
+    val notice by vm.notice.collectAsStateWithLifecycle()
+    val bundles by vm.bundles.collectAsStateWithLifecycle()
+    val t = LocalNibTokens.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var dialog by remember { mutableStateOf<String?>(null) }
+    var input by remember { mutableStateOf("") }
+    var pendingWrite by remember { mutableStateOf<String?>(null) }
+    var crashText by remember { mutableStateOf<String?>(null) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateHint by remember { mutableStateOf("检查") }
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var openGroups by rememberSaveable { mutableStateOf("") }
+    val openKeys = openGroups.split(',').filter { it.isNotEmpty() }.toSet()
+
+    val (undone, done) = splitByDone(bundles)
+    val weekStart = System.currentTimeMillis() - 7L * 24L * 3600L * 1000L
+    val doneWeek = bundles.count { it.entry.done == 1 && (it.entry.doneAt ?: 0L) >= weekStart }
+
+    val createDocument = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        val text = pendingWrite ?: return@rememberLauncherForActivityResult
+        pendingWrite = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+            withContext(Dispatchers.Main) { vm.setNotice("导出完成") }
+        }
+    }
+
+    val openDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            }
+            vm.setNotice(vm.importBackup(text))
+        }
+    }
+
+    fun requestExport(format: String) {
+        scope.launch {
+            val (name, text) = vm.buildExport(format)
+            pendingWrite = text
+            createDocument.launch(name)
+        }
+    }
+
+    LaunchedEffect(dialog) { input = "" }
+
+    LaunchedEffect(Unit) {
+        crashText = withContext(Dispatchers.IO) { CrashCatcher.latest(context) }
+    }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            NibHero(
+                sub = "全部数据存在本机",
+                title = "我的",
+                actions = {
+                    Box(
+                        modifier = Modifier
+                            .size(31.dp)
+                            .clip(RoundedCornerShape(t.radiusM.dp))
+                            .background(tokenColor(t.card2))
+                            .border(0.6.dp, tokenColor(t.line), RoundedCornerShape(t.radiusM.dp))
+                            .clickable { onOpenPermissions() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Build, contentDescription = null, tint = tokenColor(t.text2), modifier = Modifier.size(15.dp))
+                    }
+                },
+            )
+        }
+        item {
+            Padded {
+                StatRow(undone.size, doneWeek, bundles.size)
+            }
+        }
+        item { Padded { ThemePanel(vm, theme, t) } }
+
+        item {
+            Padded {
+                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "lists") }) {
+                    SectionTitle("清单", "一条只属于一个 · ${groupHint(openKeys, "lists")}")
+                }
+            }
+        }
+        if ("lists" in openKeys) item {
+            Padded {
+                NibCard {
+                    lists.forEach { list ->
+                        val count = bundles.count { it.entry.listId == list.id && it.entry.done != 1 }
+                        ManageRow(list.name, count, Icons.AutoMirrored.Filled.List, hexColor(list.color, tokenColor(t.accent))) {
+                            vm.deleteList(list.id)
+                        }
+                        NibRowDivider()
+                    }
+                    val uncategorized = bundles.count { it.entry.listId == null && it.entry.done != 1 }
+                    AddRow("新建清单", if (uncategorized > 0) "$uncategorized 条未分类" else "") { dialog = "addList" }
+                }
+            }
+        }
+
+        item {
+            Padded {
+                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "tags") }) {
+                    SectionTitle("标签", "一条可以有多个，跨清单 · ${groupHint(openKeys, "tags")}")
+                }
+            }
+        }
+        if ("tags" in openKeys) item {
+            Padded {
+                NibCard {
+                    tags.forEach { tag ->
+                        val count = bundles.count { tag.id in it.tagIds && it.entry.done != 1 }
+                        ManageRow(tag.name, count, Icons.Default.Star, tokenColor(t.accent2)) {
+                            vm.deleteTag(tag.id)
+                        }
+                        NibRowDivider()
+                    }
+                    AddRow("新建标签", "速记里输 # 也能建") { dialog = "addTag" }
+                }
+            }
+        }
+
+        item {
+            Padded {
+                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "sync") }) {
+                    SectionTitle("同步与导出", groupHint(openKeys, "sync"))
+                }
+            }
+        }
+        if ("sync" in openKeys) item {
+            Padded {
+                NibCard {
+                    ActionRow(Icons.Default.Refresh, "待推送变更", "${sync.pending} 条") { vm.refreshSyncState() }
+                    ActionRow(Icons.Default.Refresh, "断点游标", "${sync.cursor}") { vm.refreshSyncState() }
+                    ActionRow(Icons.Default.Info, "冲突记录", "${sync.conflicts} 条") { dialog = "conflicts" }
+                    ActionRow(Icons.AutoMirrored.Filled.List, "导出 Markdown", "保存") { requestExport("md") }
+                    ActionRow(Icons.Default.DateRange, "导出 ICS 日程", "保存") { requestExport("ics") }
+                    ActionRow(Icons.Default.Info, "整库备份 JSON", "保存") { requestExport("json") }
+                    ActionRow(Icons.Default.Build, "导入备份", "选择文件") {
+                        openDocument.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }
+                    if (notice != null) {
+                        Text(
+                            text = notice.orEmpty(),
+                            color = tokenColor(t.text3),
+                            fontSize = 11.5.sp,
+                            fontFamily = nibFontFamily(),
+                            modifier = Modifier
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .clickable { vm.clearNotice() },
+                        )
+                    }
+                }
+            }
+        }
+
+        item { Padded { SectionTitle("系统能力") } }
+        item {
+            Padded {
+                NibCard {
+                    ActionRow(Icons.Default.Notifications, "通知与日历权限", "查看") { onOpenPermissions() }
+                }
+            }
+        }
+
+        item { Padded { SectionTitle("诊断") } }
+        item {
+            Padded {
+                NibCard {
+                    ActionRow(Icons.Default.Build, "最近崩溃", if (crashText == null) "无" else "查看") {
+                        if (crashText != null) dialog = "crash"
+                    }
+                    ActionRow(Icons.Default.Build, "崩溃日志路径", "查看") {
+                        vm.setNotice(CrashCatcher.exportPath(context))
+                    }
+                }
+            }
+        }
+
+        item { Padded { SectionTitle("关于") } }
+        item {
+            Padded {
+                NibCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        NibIconBadge(Icons.Default.Info, tokenColor(t.text3))
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("落笔 Nib", color = tokenColor(t.text), fontSize = 13.5.sp, fontFamily = nibFontFamily())
+                            Text(
+                                "数据仅存本机",
+                                color = tokenColor(t.text3),
+                                fontSize = 10.5.sp,
+                                fontFamily = nibFontFamily(),
+                            )
+                        }
+                        Text("v${BuildConfig.VERSION_NAME}", color = tokenColor(t.text3), fontSize = 11.sp, fontFamily = nibFontFamily())
+                    }
+                    NibRowDivider()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { openUrl(context, PROJECT_URL) }
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                    ) {
+                        Text("项目地址", color = tokenColor(t.text3), fontSize = 10.5.sp, fontFamily = nibFontFamily())
+                        Text(
+                            text = PROJECT_URL.removePrefix("https://"),
+                            color = tokenColor(t.accent),
+                            fontSize = 12.5.sp,
+                            fontFamily = nibFontFamily(),
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    NibRowDivider()
+                    ActionRow(Icons.Default.Refresh, "检查更新", updateHint) {
+                        if (checkingUpdate) return@ActionRow
+                        checkingUpdate = true
+                        updateHint = "检查中"
+                        scope.launch {
+                            val result = UpdateChecker.latest()
+                            checkingUpdate = false
+                            result.onSuccess { info ->
+                                if (isNewerVersion(info.version, BuildConfig.VERSION_NAME)) {
+                                    updateHint = "发现 v${info.version}"
+                                    updateInfo = info
+                                } else {
+                                    updateHint = "已是最新"
+                                }
+                            }.onFailure {
+                                updateHint = "检查失败"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(104.dp)) }
+    }
+
+    when (dialog) {
+        "conflicts" -> AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text("冲突记录 ${conflicts.size}") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    if (conflicts.isEmpty()) Text("暂无冲突", fontSize = 13.sp)
+                    conflicts.forEach { conflict ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("${conflict.field} · ${conflict.entityId}", fontSize = 13.sp)
+                                Text("败者原文：${conflict.loserValue ?: "空"}", fontSize = 12.sp)
+                                Text("另一台设备改过 · ${conflict.deviceId}", fontSize = 11.sp)
+                            }
+                            IconButton(onClick = { vm.deleteConflict(conflict.id) }) {
+                                Icon(Icons.Default.Delete, contentDescription = null)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } },
+        )
+        "crash" -> AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text("最近崩溃") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(crashText.orEmpty(), fontSize = 11.sp)
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("关闭") } },
+        )
+        "addList", "addTag" -> AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text(if (dialog == "addList") "新建清单" else "新建标签") },
+            text = {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    singleLine = true,
+                    label = { Text("名称") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = input.trim()
+                    if (name.isNotEmpty()) {
+                        if (dialog == "addList") vm.addList(name) else vm.addTag(name)
+                    }
+                    dialog = null
+                }) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("取消") } },
+        )
+    }
+
+    val pending = updateInfo
+    if (pending != null) {
+        AlertDialog(
+            onDismissRequest = { updateInfo = null },
+            title = { Text("发现新版本 v${pending.version}") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    Text(pending.notes, fontSize = 12.5.sp, fontFamily = nibFontFamily())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    openUrl(context, pending.downloadUrl ?: pending.pageUrl)
+                    updateInfo = null
+                }) {
+                    Text(if (pending.downloadUrl != null) "下载" else "查看页面")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateInfo = null }) { Text("稍后") }
+            },
+        )
+    }
+}
+
+private fun openUrl(context: Context, url: String) {
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Nib" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Nib.Dialog" parent="android:Theme.DeviceDefault.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>

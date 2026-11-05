@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">落笔</string>
+    <string name="tile_label">速记</string>
+    <string name="shortcut_capture">新建</string>
+    <string name="shortcut_search">搜索</string>
+    <string name="shortcut_today">今日</string>
+    <string name="widget_capture">落笔 · 速记</string>
+    <string name="widget_capture_desc">点一下随手记一句</string>
+    <string name="widget_todo">落笔 · 今日待办</string>
+    <string name="widget_todo_desc">桌面上直接勾选</string>
+    <string name="widget_list">落笔 · 最近记录</string>
+    <string name="widget_list_desc">最近 8 条</string>
+    <string name="capture_placeholder">随手记一句</string>
+    <string name="capture_save">保存</string>
+    <string name="widget_empty">今天没有待办</string>
+    <string name="widget_open">打开落笔</string>
+</resources>
