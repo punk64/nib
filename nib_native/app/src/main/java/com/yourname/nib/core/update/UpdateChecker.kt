@@ -6,10 +6,10 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-const val PROJECT_URL = "https://github.com/yourname/nib"
-const val ISSUE_URL = "https://github.com/yourname/nib/issues"
+const val PROJECT_URL = "https://github.com/punk64/nib"
+const val ISSUE_URL = "https://github.com/punk64/nib/issues"
 
-private const val RELEASES_API = "https://api.github.com/repos/yourname/nib/releases/latest"
+private const val RELEASES_API = "https://api.github.com/repos/punk64/nib/releases/latest"
 
 data class UpdateInfo(
     val version: String,
@@ -41,6 +41,7 @@ object UpdateChecker {
             }
             try {
                 val code = connection.responseCode
+                if (code == 404) return@runCatching UpdateInfo("0.0.0", "仓库尚未发布任何版本", null, PROJECT_URL)
                 if (code !in 200..299) throw IllegalStateException("HTTP $code")
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 val json = JSONObject(body)

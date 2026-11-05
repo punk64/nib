@@ -32,4 +32,9 @@ class UpdateCheckTest {
         assertFalse(isNewerVersion("abc", "0.1.12"))
         assertTrue(isNewerVersion("0.2.0-beta", "0.1.12"))
     }
+
+    @Test fun noReleasePlaceholderIsNeverNewer() {
+        assertFalse(isNewerVersion("0.0.0", "0.1.13"))
+        assertFalse(isNewerVersion("0.0.0", "0.1.0"))
+    }
 }

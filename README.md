@@ -138,8 +138,8 @@ Run unit tests:
 
 ## 项目地址 / Links
 
-- 仓库 / Repository: https://github.com/yourname/nib
-- 问题反馈 / Issues: https://github.com/yourname/nib/issues
+- 仓库 / Repository: https://github.com/punk64/nib
+- 问题反馈 / Issues: https://github.com/punk64/nib/issues
 
 ## 许可 / License
 
