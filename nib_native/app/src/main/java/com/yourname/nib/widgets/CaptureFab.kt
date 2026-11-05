@@ -55,7 +55,7 @@ private val fabFullSize = 54.dp
 private val fabDockWidth = 10.dp
 private val fabDockHeight = 44.dp
 private val fabSideGap = 20.dp
-private const val fabIdleMillis = 2000L
+private const val fabIdleMillis = 1500L
 
 @Composable
 fun CaptureFab(onClick: () -> Unit) {

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +35,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -54,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -546,7 +551,56 @@ private fun toggleGroup(current: String, key: String): String {
     return (if (key in keys) keys - key else keys + key).joinToString(",")
 }
 
-private fun groupHint(openKeys: Set<String>, key: String): String = if (key in openKeys) "收起" else "展开"
+@Composable
+private fun GroupHeader(title: String, sub: String?, expanded: Boolean, onToggle: () -> Unit) {
+    val t = LocalNibTokens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(t.radiusM.dp))
+            .clickable { onToggle() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) { SectionTitle(title, sub) }
+        ExpandBadge(expanded, t)
+    }
+}
+
+@Composable
+private fun ExpandBadge(expanded: Boolean, t: NibTokens) {
+    val accent = tokenColor(t.accent)
+    val angle by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(220),
+        label = "expandAngle",
+    )
+    Row(
+        modifier = Modifier
+            .offset(y = if (t.styleId == "v3b") 10.dp else 5.dp)
+            .clip(RoundedCornerShape(50))
+            .background(accent.copy(alpha = 0.16f))
+            .border(0.8.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(50))
+            .padding(start = 9.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (expanded) "收起" else "展开",
+            color = accent,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = nibFontFamily(),
+        )
+        Spacer(Modifier.width(2.dp))
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = if (expanded) "收起" else "展开",
+            tint = accent,
+            modifier = Modifier
+                .size(15.dp)
+                .rotate(angle),
+        )
+    }
+}
 
 @Composable
 private fun ActionRow(icon: ImageVector, label: String, value: String, onClick: () -> Unit) {
@@ -657,8 +711,8 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
 
         item {
             Padded {
-                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "lists") }) {
-                    SectionTitle("清单", "一条只属于一个 · ${groupHint(openKeys, "lists")}")
+                GroupHeader("清单", "一条只属于一个", "lists" in openKeys) {
+                    openGroups = toggleGroup(openGroups, "lists")
                 }
             }
         }
@@ -680,8 +734,8 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
 
         item {
             Padded {
-                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "tags") }) {
-                    SectionTitle("标签", "一条可以有多个，跨清单 · ${groupHint(openKeys, "tags")}")
+                GroupHeader("标签", "一条可以有多个，跨清单", "tags" in openKeys) {
+                    openGroups = toggleGroup(openGroups, "tags")
                 }
             }
         }
@@ -702,8 +756,8 @@ fun MeScreen(vm: NibViewModel, onOpenPermissions: () -> Unit) {
 
         item {
             Padded {
-                Box(Modifier.clickable { openGroups = toggleGroup(openGroups, "sync") }) {
-                    SectionTitle("同步与导出", groupHint(openKeys, "sync"))
+                GroupHeader("同步与导出", null, "sync" in openKeys) {
+                    openGroups = toggleGroup(openGroups, "sync")
                 }
             }
         }
